@@ -373,6 +373,10 @@ export const Tiefling = function(container, options = {}) {
 }
 
 
+// Persistent worker for depth estimation — kept alive so the ONNX session is cached between runs
+let depthWorker = null;
+let depthWorkerInitialized = false;
+
 /**
  * Generate depth map from an image
  * @param options
@@ -389,6 +393,7 @@ export const generateDepthmap = function(imageFile, options = {}) {
     };
 
     const onnxModel = options.onnxModel || '/models/depthanythingv2-vits-dynamic-quant.onnx';
+    const onnxModelWebGPU = options.onnxModelWebGPU || '/models/depthanythingv2_model_fp16.onnx';
 
     const depthmapSize = options.depthmapSize || 512;
 
@@ -465,12 +470,23 @@ export const generateDepthmap = function(imageFile, options = {}) {
 
             const imageData = expandedCtx.getImageData(0, 0, size, size);
 
-            const worker = new Worker('/js/worker.js', {
-                type: 'module'
-            });
+            // Create worker once, reuse for subsequent calls
+            if (!depthWorker) {
+                depthWorker = new Worker('/js/worker.js', {
+                    type: 'module'
+                });
+            }
+
+            if (!depthWorkerInitialized) {
+                depthWorker.postMessage({
+                    type: 'init',
+                    wasmPaths: wasmPaths
+                });
+                depthWorkerInitialized = true;
+            }
 
             const workerResult = await new Promise((resolve, reject) => {
-                worker.onmessage = function(e) {
+                depthWorker.onmessage = function(e) {
                     if (e.data.error) {
                         reject(new Error(e.data.error));
                     } else {
@@ -478,15 +494,11 @@ export const generateDepthmap = function(imageFile, options = {}) {
                     }
                 };
 
-                worker.postMessage({
-                    type: 'init',
-                    wasmPaths: wasmPaths
-                });
-
-                worker.postMessage({
+                depthWorker.postMessage({
                     imageData,
                     size,
                     onnxModel,
+                    onnxModelWebGPU,
                     wasmPaths
                 });
             });
@@ -520,7 +532,6 @@ export const generateDepthmap = function(imageFile, options = {}) {
             finalCtx.drawImage(cutCanvas, 0, 0, image.width, image.height);
 
             // clean up
-            worker.terminate();
             URL.revokeObjectURL(imageUrl);
 
             return { canvas: finalCanvas, backend };

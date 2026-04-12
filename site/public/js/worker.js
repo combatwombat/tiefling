@@ -1,5 +1,8 @@
 import * as ort from '/js/tiefling/node_modules/onnxruntime-web/dist/ort.all.mjs';
 let initialized = false;
+let cachedSession = null;
+let cachedModelPath = null;
+let cachedBackend = null;
 
 /**
  * Convert RGBA to RGB, then reformat as RRRR... GGGG... BBBB
@@ -106,34 +109,43 @@ self.onmessage = async function(e) {
         imageData,
         size,
         onnxModel,
+        onnxModelWebGPU,
         dilateRadius = 0,
     } = e.data;
 
     try {
-        // Detect WebGPU availability in this worker
-        const webgpuAvailable = typeof navigator !== 'undefined' && 'gpu' in navigator;
+        // Reuse cached session, or create a new one
+        if (!cachedSession) {
+            const webgpuAvailable = typeof navigator !== 'undefined' && 'gpu' in navigator;
 
-        // Try WebGPU first, fall back to WASM
-        const executionProviders = webgpuAvailable
-            ? ['webgpu', 'wasm']
-            : ['wasm'];
-
-        const session = await ort.InferenceSession.create(onnxModel, {
-            executionProviders
-        });
+            if (webgpuAvailable && onnxModelWebGPU) {
+                // Use fp16 model with WebGPU for best GPU performance
+                cachedSession = await ort.InferenceSession.create(onnxModelWebGPU, {
+                    executionProviders: ['webgpu', 'wasm']
+                });
+                cachedBackend = 'webgpu';
+            } else {
+                // Fall back to quantized model with WASM
+                cachedSession = await ort.InferenceSession.create(onnxModel, {
+                    executionProviders: ['wasm']
+                });
+                cachedBackend = 'wasm';
+            }
+        }
 
         const preprocessed = preprocessImage(imageData, imageData.width, imageData.height);
         const input = new ort.Tensor('float32', preprocessed, [1, 3, size, size]);
-        const results = await session.run({ image: input });
+
+        // Models use different input/output names
+        const inputName = cachedBackend === 'webgpu' ? 'pixel_values' : 'image';
+        const outputName = cachedBackend === 'webgpu' ? 'predicted_depth' : 'depth';
+        const results = await cachedSession.run({ [inputName]: input });
 
         // Postprocess
-        let depthImage = postprocessImage(results.depth);
-
-        // Report which backend was used
-        const backend = webgpuAvailable ? 'webgpu' : 'wasm';
+        let depthImage = postprocessImage(results[outputName]);
 
         // Send back result
-        self.postMessage({ processedImageData: depthImage, backend }, [depthImage.data.buffer]);
+        self.postMessage({ processedImageData: depthImage, backend: cachedBackend }, [depthImage.data.buffer]);
     } catch (error) {
         self.postMessage({ error: error.message });
     }
