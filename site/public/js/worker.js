@@ -1,4 +1,4 @@
-import * as ort from '/js/tiefling/node_modules/onnxruntime-web/dist/ort.mjs';
+import * as ort from '/js/tiefling/node_modules/onnxruntime-web/dist/ort.all.mjs';
 let initialized = false;
 
 /**
@@ -110,8 +110,18 @@ self.onmessage = async function(e) {
     } = e.data;
 
     try {
-        // Run inference
-        const session = await ort.InferenceSession.create(onnxModel);
+        // Detect WebGPU availability in this worker
+        const webgpuAvailable = typeof navigator !== 'undefined' && 'gpu' in navigator;
+
+        // Try WebGPU first, fall back to WASM
+        const executionProviders = webgpuAvailable
+            ? ['webgpu', 'wasm']
+            : ['wasm'];
+
+        const session = await ort.InferenceSession.create(onnxModel, {
+            executionProviders
+        });
+
         const preprocessed = preprocessImage(imageData, imageData.width, imageData.height);
         const input = new ort.Tensor('float32', preprocessed, [1, 3, size, size]);
         const results = await session.run({ image: input });
@@ -119,8 +129,11 @@ self.onmessage = async function(e) {
         // Postprocess
         let depthImage = postprocessImage(results.depth);
 
+        // Report which backend was used
+        const backend = webgpuAvailable ? 'webgpu' : 'wasm';
+
         // Send back result
-        self.postMessage({ processedImageData: depthImage }, [depthImage.data.buffer]);
+        self.postMessage({ processedImageData: depthImage, backend }, [depthImage.data.buffer]);
     } catch (error) {
         self.postMessage({ error: error.message });
     }

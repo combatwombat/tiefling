@@ -134,7 +134,10 @@ export const Tiefling = function(container, options = {}) {
     const getDepthmapURL = async (file, depthmapSize = null) => {
 
         try {
-            const depthCanvas = await generateDepthmap(file, {depthmapSize: depthmapSize || this.depthmapSize});
+            const result = await generateDepthmap(file, {depthmapSize: depthmapSize || this.depthmapSize});
+            const depthCanvas = result.canvas;
+            this.depthBackend = result.backend;
+            console.log('Depth estimation backend:', result.backend);
 
             // convert depth map canvas to blob URL
             return await new Promise((resolve, reject) => {
@@ -281,6 +284,9 @@ export const Tiefling = function(container, options = {}) {
 
         getDepthmapURL: getDepthmapURL,
 
+        getDepthBackend: () => {
+            return this.depthBackend || null;
+        },
 
         getDepthmapSize: () => {
             return this.depthmapSize
@@ -377,9 +383,9 @@ export const generateDepthmap = function(imageFile, options = {}) {
 
     const wasmPaths = options.wasmPaths || {
         'ort-wasm-simd-threaded.wasm': '/js/tiefling/onnx-wasm/ort-wasm-simd-threaded.wasm',
-        'ort-wasm-simd.wasm': '/js/tiefling/onnx-wasm/ort-wasm-simd.wasm',
-        'ort-wasm-threaded.wasm': '/js/tiefling/onnx-wasm/ort-wasm-threaded.wasm',
-        'ort-wasm.wasm': '/js/tiefling/onnx-wasm/ort-wasm.wasm'
+        'ort-wasm-simd-threaded.mjs': '/js/tiefling/onnx-wasm/ort-wasm-simd-threaded.mjs',
+        'ort-wasm-simd-threaded.jsep.wasm': '/js/tiefling/onnx-wasm/ort-wasm-simd-threaded.jsep.wasm',
+        'ort-wasm-simd-threaded.jsep.mjs': '/js/tiefling/onnx-wasm/ort-wasm-simd-threaded.jsep.mjs',
     };
 
     const onnxModel = options.onnxModel || '/models/depthanythingv2-vits-dynamic-quant.onnx';
@@ -463,12 +469,12 @@ export const generateDepthmap = function(imageFile, options = {}) {
                 type: 'module'
             });
 
-            const processedImageData = await new Promise((resolve, reject) => {
+            const workerResult = await new Promise((resolve, reject) => {
                 worker.onmessage = function(e) {
                     if (e.data.error) {
                         reject(new Error(e.data.error));
                     } else {
-                        resolve(e.data.processedImageData);
+                        resolve(e.data);
                     }
                 };
 
@@ -484,6 +490,9 @@ export const generateDepthmap = function(imageFile, options = {}) {
                     wasmPaths
                 });
             });
+
+            const processedImageData = workerResult.processedImageData;
+            const backend = workerResult.backend || 'wasm';
 
             // square temp canvas for the depth map
             const tempCanvas = document.createElement('canvas');
@@ -514,7 +523,7 @@ export const generateDepthmap = function(imageFile, options = {}) {
             worker.terminate();
             URL.revokeObjectURL(imageUrl);
 
-            return finalCanvas;
+            return { canvas: finalCanvas, backend };
 
         } catch (error) {
             console.error("error in generateDepthMap:", error);
