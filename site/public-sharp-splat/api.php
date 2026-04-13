@@ -42,7 +42,7 @@ if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
     $cleanup = true;
 } elseif (isset($_POST['imageUrl']) && $_POST['imageUrl'] !== '') {
     // URL — download it
-    $url = $_POST['imageUrl'];
+    $url = str_replace(' ', '%20', trim($_POST['imageUrl']));
     $id = bin2hex(random_bytes(8));
 
     $ch = curl_init($url);

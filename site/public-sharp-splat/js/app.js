@@ -70,7 +70,7 @@ function onResize() {
 
 // --- Splat loaded callback ---
 function onSplatLoaded(mesh) {
-    console.log("Splat loaded. Splat count:", mesh.packedSplats?.size);
+    console.log("Splat loaded. Splat count:", mesh.numSplats);
 
     const box = mesh.getBoundingBox();
     const center = new THREE.Vector3();
@@ -148,7 +148,7 @@ async function processImageFromUrl(imageUrl) {
         const formData = new FormData();
         formData.append("imageUrl", imageUrl);
 
-        showLoading("Generating 3D gaussian splat… (this takes ~15s)");
+        showLoading("Generating 3D gaussian splat… (this takes ~20s)");
         const resp = await fetch("api.php", {
             method: "POST",
             body: formData,
@@ -178,7 +178,7 @@ function showLoading(msg) {
     const el = document.getElementById("loading");
     el.classList.add("visible");
     el.querySelector(".message").textContent = msg || "Processing…";
-    document.title = "⏳ " + (msg || "Processing…");
+    document.title = "🔴 " + (msg || "Processing…");
 }
 
 function hideLoading() {
@@ -266,10 +266,16 @@ function initControls() {
 
     // Mouse button state
     canvas.addEventListener("mousedown", (e) => {
-        if (e.button === 0) state.mouseDown = true;
+        if (e.button === 0) {
+            state.mouseDown = true;
+            canvas.style.cursor = "none";
+        }
     });
     document.addEventListener("mouseup", (e) => {
-        if (e.button === 0) state.mouseDown = false;
+        if (e.button === 0) {
+            state.mouseDown = false;
+            canvas.style.cursor = "";
+        }
     });
 
     // Mouse: button up = parallax strafe, button down = rotate camera
@@ -323,10 +329,15 @@ function updateMovement(dt) {
 function startRenderLoop() {
     const clock = new THREE.Clock();
 
+    let frameCount = 0;
     state.renderer.setAnimationLoop(() => {
         const dt = clock.getDelta();
         updateMovement(dt);
         state.renderer.render(state.scene, state.camera);
+
+        if (++frameCount % 300 === 0 && state.splatMesh) {
+            console.log("Splats:", state.splatMesh.numSplats, "| FPS:", Math.round(1 / dt));
+        }
     });
 }
 
