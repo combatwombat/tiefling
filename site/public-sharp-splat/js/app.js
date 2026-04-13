@@ -117,7 +117,7 @@ async function processImage(file) {
     formData.append("image", file);
 
     try {
-        showLoading("Generating 3D gaussian splat… (this takes ~15s)");
+        showLoading("Generating 3D gaussian splat… (this takes ~20s)");
         const resp = await fetch("api.php", {
             method: "POST",
             body: formData,
