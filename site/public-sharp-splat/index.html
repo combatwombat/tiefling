@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tiefling Sharp — Gaussian Splat Viewer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #000;
+            color: #ccc;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+        }
+        #canvas-container {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+        }
+        canvas { display: block; }
+
+        /* Drop zone overlay */
+        #dropzone {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.85);
+            transition: opacity 0.3s;
+        }
+        #dropzone.hidden { display: none; }
+        #dropzone.drag-over { background: rgba(30,60,90,0.9); }
+        #dropzone h1 {
+            font-size: 1.5rem;
+            font-weight: 400;
+            margin-bottom: 1rem;
+            color: #eee;
+        }
+        #dropzone p {
+            font-size: 0.9rem;
+            color: #888;
+            margin-bottom: 2rem;
+        }
+        #drop-area {
+            width: 400px;
+            height: 250px;
+            border: 2px dashed #555;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+        }
+        #drop-area:hover, #drop-area.drag-over {
+            border-color: #88f;
+            background: rgba(80,80,200,0.1);
+        }
+        #drop-area span { font-size: 0.95rem; color: #aaa; pointer-events: none; }
+        #drop-area input { display: none; }
+
+        /* Loading overlay */
+        #loading {
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.85);
+            flex-direction: column;
+        }
+        #loading.visible { display: flex; }
+        #loading .spinner {
+            width: 48px;
+            height: 48px;
+            border: 3px solid #333;
+            border-top-color: #88f;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        #loading .message {
+            margin-top: 1rem;
+            font-size: 0.95rem;
+            color: #aaa;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* HUD */
+        #hud {
+            position: fixed;
+            bottom: 16px;
+            left: 16px;
+            z-index: 50;
+            font-size: 0.75rem;
+            color: #666;
+            pointer-events: none;
+            line-height: 1.6;
+        }
+        #hud.hidden { display: none; }
+        #hud kbd {
+            background: #222;
+            border: 1px solid #444;
+            border-radius: 3px;
+            padding: 1px 5px;
+            font-family: inherit;
+            font-size: 0.7rem;
+            color: #999;
+        }
+    </style>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "./js/lib/three.module.js",
+            "@sparkjsdev/spark": "./js/lib/spark.module.js"
+        }
+    }
+    </script>
+</head>
+<body>
+    <div id="canvas-container"></div>
+
+    <div id="dropzone">
+        <h1>Tiefling Sharp</h1>
+        <p>Drag &amp; drop an image, or load one via <code>?input=url</code></p>
+        <div id="drop-area">
+            <span>Drop image here or click to browse</span>
+            <input type="file" id="file-input" accept="image/*">
+        </div>
+    </div>
+
+    <div id="loading">
+        <div class="spinner"></div>
+        <div class="message">Generating 3D gaussian splat…</div>
+    </div>
+
+    <div id="hud">
+        <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move &nbsp;
+        <kbd>Q</kbd> down <kbd>E</kbd> up &nbsp;
+        <kbd>Mouse</kbd> look &nbsp;
+        <kbd>Shift</kbd> fast &nbsp;
+        <kbd>H</kbd> hide UI &nbsp;
+        <kbd>Esc</kbd> release cursor
+    </div>
+
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>
