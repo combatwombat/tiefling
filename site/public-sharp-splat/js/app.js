@@ -13,12 +13,12 @@ const state = {
     keys: {},
     mouseDown: false,
     euler: new THREE.Euler(0, 0, 0, "YXZ"),
-    moveSpeed: 0.8,
-    lookSpeed: 0.003,
+    moveSpeed: 0.2,
+    lookSpeed: 0.002,
     hudVisible: true,
     // Mouse parallax
     mouseNDC: { x: 0, y: 0 },        // normalized -1..1
-    parallaxStrength: 0.3,            // how far camera strafes on mouse move
+    parallaxStrength: 0.05,            // how far camera strafes on mouse move
     parallaxTarget: new THREE.Vector3(),
     parallaxCurrent: new THREE.Vector3(),
     parallaxLerp: 0.05,              // smoothing per frame
@@ -172,14 +172,18 @@ async function processImageFromUrl(imageUrl) {
 }
 
 // --- UI helpers ---
+const defaultTitle = document.title;
+
 function showLoading(msg) {
     const el = document.getElementById("loading");
     el.classList.add("visible");
     el.querySelector(".message").textContent = msg || "Processing…";
+    document.title = "⏳ " + (msg || "Processing…");
 }
 
 function hideLoading() {
     document.getElementById("loading").classList.remove("visible");
+    document.title = defaultTitle;
 }
 
 function hideDropzone() {
