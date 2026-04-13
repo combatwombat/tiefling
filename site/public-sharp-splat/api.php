@@ -54,15 +54,19 @@ if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
         CURLOPT_TIMEOUT => 30,
         CURLOPT_MAXFILESIZE => 50 * 1024 * 1024,
         CURLOPT_HTTPHEADER => ['User-Agent: Mozilla/5.0 (compatible; Tiefling/1.0)'],
+        CURLOPT_SSL_VERIFYPEER => false, // allow self-signed certs (local dev)
+        CURLOPT_SSL_VERIFYHOST => false,
     ]);
     $ok = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
     curl_close($ch);
     fclose($fp);
 
     if (!$ok || $httpCode !== 200) {
         @unlink($tmpFile);
-        echo json_encode(['state' => 'error', 'data' => "Failed to fetch image (HTTP $httpCode)"]);
+        $detail = $curlError ? " ($curlError)" : "";
+        echo json_encode(['state' => 'error', 'data' => "Failed to fetch image (HTTP $httpCode)$detail"]);
         exit;
     }
 
