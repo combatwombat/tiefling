@@ -11,8 +11,10 @@ const state = {
     splatContainer: null, // group for coordinate transform
     // Camera control
     keys: {},
+    mouseDown: false,
     euler: new THREE.Euler(0, 0, 0, "YXZ"),
     moveSpeed: 0.8,
+    lookSpeed: 0.003,
     hudVisible: true,
     // Mouse parallax
     mouseNDC: { x: 0, y: 0 },        // normalized -1..1
@@ -258,63 +260,59 @@ function initControls() {
         state.keys[e.code] = false;
     });
 
-    // Click canvas to enter fly mode (pointer lock)
-    canvas.addEventListener("click", () => {
-        if (!state.flyMode) {
-            canvas.requestPointerLock();
-        }
+    // Mouse button state
+    canvas.addEventListener("mousedown", (e) => {
+        if (e.button === 0) state.mouseDown = true;
+    });
+    document.addEventListener("mouseup", (e) => {
+        if (e.button === 0) state.mouseDown = false;
     });
 
-    document.addEventListener("pointerlockchange", () => {
-        state.flyMode = document.pointerLockElement === canvas;
-        canvas.style.cursor = state.flyMode ? "none" : "default";
-    });
-
-    // Mouse: fly mode = pointer lock look, otherwise = parallax strafe
+    // Mouse: button up = parallax strafe, button down = rotate camera
     document.addEventListener("mousemove", (e) => {
-        if (state.flyMode) {
-            // Pointer-locked mouse look
+        if (state.mouseDown) {
+            // Rotate camera
             state.euler.setFromQuaternion(state.camera.quaternion);
             state.euler.y -= e.movementX * state.lookSpeed;
             state.euler.x -= e.movementY * state.lookSpeed;
             state.euler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, state.euler.x));
             state.camera.quaternion.setFromEuler(state.euler);
         } else {
-            // Parallax: map mouse position to NDC (-1..1)
-            state.mouseNDC.x = (e.clientX / window.innerWidth) * 2 - 1;
+            // Parallax strafe
+            state.mouseNDC.x = -((e.clientX / window.innerWidth) * 2 - 1);
             state.mouseNDC.y = (e.clientY / window.innerHeight) * 2 - 1;
         }
     });
 }
 
 function updateMovement(dt) {
-    if (state.flyMode) {
-        // WASD + QE fly mode
-        const speed = state.moveSpeed * (state.keys["ShiftLeft"] || state.keys["ShiftRight"] ? 3.0 : 1.0);
-        const velocity = new THREE.Vector3();
+    if (!state.splatMesh) return;
 
-        if (state.keys["KeyW"]) velocity.z -= 1;
-        if (state.keys["KeyS"]) velocity.z += 1;
-        if (state.keys["KeyA"]) velocity.x -= 1;
-        if (state.keys["KeyD"]) velocity.x += 1;
-        if (state.keys["KeyE"]) velocity.y += 1;
-        if (state.keys["KeyQ"]) velocity.y -= 1;
+    // WASD + QE movement (always active)
+    const speed = state.moveSpeed * (state.keys["ShiftLeft"] || state.keys["ShiftRight"] ? 3.0 : 1.0);
+    const velocity = new THREE.Vector3();
 
-        if (velocity.length() > 0) {
-            velocity.normalize().multiplyScalar(speed * dt);
-            velocity.applyQuaternion(state.camera.quaternion);
-            state.camera.position.add(velocity);
-        }
-    } else if (state.splatMesh) {
-        // Parallax mode: smoothly strafe camera based on mouse position
-        state.parallaxTarget.set(
-            state.cameraHome.x + state.mouseNDC.x * state.parallaxStrength,
-            state.cameraHome.y - state.mouseNDC.y * state.parallaxStrength,
-            state.cameraHome.z
-        );
-        state.parallaxCurrent.lerp(state.parallaxTarget, state.parallaxLerp);
-        state.camera.position.copy(state.parallaxCurrent);
+    if (state.keys["KeyW"]) velocity.z -= 1;
+    if (state.keys["KeyS"]) velocity.z += 1;
+    if (state.keys["KeyA"]) velocity.x -= 1;
+    if (state.keys["KeyD"]) velocity.x += 1;
+    if (state.keys["KeyE"]) velocity.y += 1;
+    if (state.keys["KeyQ"]) velocity.y -= 1;
+
+    if (velocity.length() > 0) {
+        velocity.normalize().multiplyScalar(speed * dt);
+        velocity.applyQuaternion(state.camera.quaternion);
+        state.cameraHome.add(velocity);
     }
+
+    // Mouse parallax: smoothly strafe around current home position
+    state.parallaxTarget.set(
+        state.cameraHome.x + state.mouseNDC.x * state.parallaxStrength,
+        state.cameraHome.y + state.mouseNDC.y * state.parallaxStrength,
+        state.cameraHome.z
+    );
+    state.parallaxCurrent.lerp(state.parallaxTarget, state.parallaxLerp);
+    state.camera.position.copy(state.parallaxCurrent);
 }
 
 // --- Render loop ---
