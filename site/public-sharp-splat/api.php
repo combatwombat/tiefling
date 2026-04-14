@@ -19,6 +19,66 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $condaRun = '/opt/homebrew/Caskroom/miniconda/base/bin/conda run --no-capture-output -n sharp';
+
+// Extract focal length and image size from a SHARP PLY file by parsing the binary format
+function extractPlyMeta(string $plyPath): array {
+    $fh = fopen($plyPath, 'rb');
+    if (!$fh) return [];
+
+    // Property type sizes in bytes
+    $typeSizes = [
+        'char' => 1, 'uchar' => 1, 'int8' => 1, 'uint8' => 1,
+        'short' => 2, 'ushort' => 2, 'int16' => 2, 'uint16' => 2,
+        'int' => 4, 'uint' => 4, 'int32' => 4, 'uint32' => 4,
+        'float' => 4, 'float32' => 4,
+        'double' => 8, 'float64' => 8,
+        'u1' => 1, 'u4' => 4, 'i4' => 4, 'f4' => 4, 'f8' => 8,
+    ];
+
+    // Parse header: collect element names, counts, and per-element byte sizes
+    $elements = [];
+    $currentElement = null;
+    while (($line = fgets($fh)) !== false) {
+        $line = trim($line);
+        if ($line === 'end_header') break;
+        if (str_starts_with($line, 'element ')) {
+            $parts = explode(' ', $line);
+            $currentElement = $parts[1];
+            $elements[$currentElement] = ['count' => (int)$parts[2], 'propBytes' => 0];
+        } elseif (str_starts_with($line, 'property ') && $currentElement !== null) {
+            $parts = explode(' ', $line);
+            $type = $parts[1];
+            if (isset($typeSizes[$type])) {
+                $elements[$currentElement]['propBytes'] += $typeSizes[$type];
+            }
+        }
+    }
+    $dataStart = ftell($fh);
+
+    // Walk through elements to find byte offsets for intrinsic and image_size
+    $offset = $dataStart;
+    $result = [];
+    foreach ($elements as $name => $el) {
+        $totalBytes = $el['count'] * $el['propBytes'];
+        if ($name === 'intrinsic' && $el['count'] === 9 && $el['propBytes'] === 4) {
+            fseek($fh, $offset);
+            $raw = fread($fh, 9 * 4);
+            $vals = array_values(unpack('f9', $raw));
+            // intrinsic is a 3x3 matrix: [[fx,0,cx],[0,fy,cy],[0,0,1]]
+            $result['f_px'] = $vals[0];
+        } elseif ($name === 'image_size' && $el['count'] === 2 && $el['propBytes'] === 4) {
+            fseek($fh, $offset);
+            $raw = fread($fh, 2 * 4);
+            $vals = array_values(unpack('V2', $raw));
+            $result['img_width'] = $vals[0];
+            $result['img_height'] = $vals[1];
+        }
+        $offset += $totalBytes;
+    }
+
+    fclose($fh);
+    return $result;
+}
 $outputBase = __DIR__ . '/output';
 $tmpBase = __DIR__ . '/tmp';
 
@@ -82,12 +142,19 @@ $hash = md5_file($imagePath);
 $outputDir = "$outputBase/$hash";
 $basename = pathinfo($imagePath, PATHINFO_FILENAME);
 
+// Force regeneration — delete cached output if requested
+$force = isset($_POST['force']) && $_POST['force'];
+if ($force && is_dir($outputDir)) {
+    array_map('unlink', glob("$outputDir/*"));
+}
+
 // Check cache — if .ply already exists for this hash, return it
 $cachedPly = glob("$outputDir/*.ply");
 if (!empty($cachedPly)) {
     if ($cleanup) @unlink($imagePath);
     $plyFile = basename($cachedPly[0]);
-    echo json_encode(['state' => 'success', 'ply' => "output/$hash/$plyFile"]);
+    $meta = extractPlyMeta($cachedPly[0]);
+    echo json_encode(['state' => 'success', 'ply' => "output/$hash/$plyFile", 'hash' => $hash] + $meta);
     exit;
 }
 
@@ -118,4 +185,5 @@ if (empty($plyFiles)) {
 }
 
 $plyFile = basename($plyFiles[0]);
-echo json_encode(['state' => 'success', 'ply' => "output/$hash/$plyFile"]);
+$meta = extractPlyMeta($plyFiles[0]);
+echo json_encode(['state' => 'success', 'ply' => "output/$hash/$plyFile", 'hash' => $hash] + $meta);

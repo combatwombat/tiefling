@@ -145,6 +145,20 @@
             font-family: inherit;
         }
 
+        /* Regenerate button — sits inside orbit-control row */
+        #regen-button {
+            padding: 4px 12px;
+            background: #332;
+            color: #cc8;
+            border: 1px solid #554;
+            border-radius: 5px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s;
+        }
+        #regen-button:hover { background: #443; border-color: #88f; }
+        #regen-button.hidden { display: none; }
+
         /* VR button */
         #vr-button {
             position: fixed;
@@ -206,6 +220,7 @@
         <label for="orbit-distance">Orbit</label>
         <input type="range" id="orbit-distance" min="0" max="10" value="2" step="0.1">
         <input type="number" id="orbit-distance-num" value="2" step="0.1" min="0">
+        <button id="regen-button" class="hidden">Regenerate</button>
     </div>
 
     <button id="vr-button" class="hidden">Enter VR</button>

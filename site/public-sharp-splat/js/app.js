@@ -26,6 +26,10 @@ const state = {
     orbitDistance: 2,
     // Camera home position (where the original photo was taken)
     cameraHome: new THREE.Vector3(0, 0, 0),
+    // Current image source for regeneration
+    currentFile: null,
+    currentUrl: null,
+    currentHash: null,
     // WebXR / VR
     xrSession: null,
     cameraRig: null,            // Group that holds the camera — we move this for locomotion
@@ -87,6 +91,16 @@ function onResize() {
     state.renderer.setSize(w, h);
 }
 
+// --- Set camera FOV from SHARP metadata ---
+function setCameraFromMeta(meta) {
+    if (meta && meta.f_px && meta.img_height) {
+        const fovY = 2 * Math.atan(meta.img_height / (2 * meta.f_px)) * (180 / Math.PI);
+        console.log(`Setting camera FOV to ${fovY.toFixed(1)}° (f_px=${meta.f_px}, img=${meta.img_width}x${meta.img_height})`);
+        state.camera.fov = fovY;
+        state.camera.updateProjectionMatrix();
+    }
+}
+
 // --- Splat loaded callback ---
 function onSplatLoaded(mesh) {
     console.log("Splat loaded. Splat count:", mesh.numSplats);
@@ -134,11 +148,12 @@ function loadSplat(plyUrl) {
 }
 
 // --- Image upload → API → .ply ---
-async function processImage(file) {
+async function processImage(file, force = false) {
     showLoading("Uploading image…");
 
     const formData = new FormData();
     formData.append("image", file);
+    if (force) formData.append("force", "1");
 
     try {
         showLoading("Generating 3D gaussian splat… (this takes ~20s)");
@@ -155,8 +170,12 @@ async function processImage(file) {
         hideLoading();
         hideDropzone();
 
-        // Load the .ply
+        state.currentFile = file;
+        state.currentUrl = null;
+        state.currentHash = data.hash || null;
+        setCameraFromMeta(data);
         loadSplat(data.ply);
+        showRegenButton();
     } catch (err) {
         console.error("Processing failed:", err);
         hideLoading();
@@ -165,12 +184,13 @@ async function processImage(file) {
     }
 }
 
-async function processImageFromUrl(imageUrl) {
+async function processImageFromUrl(imageUrl, force = false) {
     showLoading("Fetching image…");
 
     try {
         const formData = new FormData();
         formData.append("imageUrl", imageUrl);
+        if (force) formData.append("force", "1");
 
         showLoading("Generating 3D gaussian splat… (this takes ~20s)");
         const resp = await fetch("api.php", {
@@ -186,7 +206,12 @@ async function processImageFromUrl(imageUrl) {
         hideLoading();
         hideDropzone();
 
+        state.currentFile = null;
+        state.currentUrl = imageUrl;
+        state.currentHash = data.hash || null;
+        setCameraFromMeta(data);
         loadSplat(data.ply);
+        showRegenButton();
     } catch (err) {
         console.error("Processing failed:", err);
         hideLoading();
@@ -216,6 +241,18 @@ function hideDropzone() {
 
 function showDropzone() {
     document.getElementById("dropzone").classList.remove("hidden");
+}
+
+function showRegenButton() {
+    document.getElementById("regen-button").classList.remove("hidden");
+}
+
+async function regenerateCache() {
+    if (state.currentFile) {
+        processImage(state.currentFile, true);
+    } else if (state.currentUrl) {
+        processImageFromUrl(state.currentUrl, true);
+    }
 }
 
 // --- Drag & drop ---
@@ -329,6 +366,9 @@ function initControls() {
         const v = parseFloat(orbitNum.value);
         if (!isNaN(v) && v >= 0) setOrbitDistance(v);
     });
+
+    // Regenerate cache button
+    document.getElementById("regen-button").addEventListener("click", regenerateCache);
 
     // Double-click: raycast to set orbit distance from nearest splat
     canvas.addEventListener("dblclick", (e) => {
