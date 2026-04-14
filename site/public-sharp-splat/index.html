@@ -116,6 +116,42 @@
             font-size: 0.7rem;
             color: #999;
         }
+
+        /* Orbit distance slider */
+        #orbit-control {
+            position: fixed;
+            bottom: 16px;
+            right: 120px;
+            z-index: 50;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.75rem;
+            color: #666;
+        }
+        #orbit-control label { white-space: nowrap; }
+        #orbit-distance {
+            width: 120px;
+            accent-color: #88f;
+        }
+
+        /* VR button */
+        #vr-button {
+            position: fixed;
+            bottom: 16px;
+            right: 16px;
+            z-index: 50;
+            padding: 10px 20px;
+            background: #333;
+            color: #ccc;
+            border: 1px solid #555;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s;
+        }
+        #vr-button:hover { background: #444; border-color: #88f; }
+        #vr-button.hidden { display: none; }
     </style>
     <script type="importmap">
     {
@@ -147,9 +183,20 @@
         <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move &nbsp;
         <kbd>Q</kbd> down <kbd>E</kbd> up &nbsp;
         <kbd>Mouse</kbd> parallax &nbsp;
+        <kbd>Click+drag</kbd> orbit &nbsp;
         <kbd>Shift</kbd> fast &nbsp;
         <kbd>H</kbd> hide UI
+        <br>
+        VR: <kbd>L-stick</kbd> move <kbd>R-stick</kbd> look &nbsp;
+        <kbd>Squeeze both</kbd> hold to reset
     </div>
+
+    <div id="orbit-control">
+        <label for="orbit-distance">Orbit</label>
+        <input type="range" id="orbit-distance" min="0" max="30" value="2" step="0.5">
+    </div>
+
+    <button id="vr-button" class="hidden">Enter VR</button>
 
     <script type="module" src="js/app.js"></script>
 </body>

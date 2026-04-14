@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { SplatMesh, SparkRenderer } from "@sparkjsdev/spark";
+import { SplatMesh, SparkRenderer, FpsMovement } from "@sparkjsdev/spark";
 
 // --- State ---
 const state = {
@@ -22,8 +22,17 @@ const state = {
     parallaxTarget: new THREE.Vector3(),
     parallaxCurrent: new THREE.Vector3(),
     parallaxLerp: 0.05,              // smoothing per frame
+    // Orbit pivot distance: 0 = rotate in place, large = orbit around distant point (≈ strafe)
+    orbitDistance: 2,
     // Camera home position (where the original photo was taken)
     cameraHome: new THREE.Vector3(0, 0, 0),
+    // WebXR / VR
+    xrSession: null,
+    cameraRig: null,            // Group that holds the camera — we move this for locomotion
+    xrControllers: [],
+    xrResetHeld: 0,             // seconds the reset button has been held
+    xrResetThreshold: 1.0,      // seconds to hold before reset triggers
+    xrResetDone: false,         // prevent repeated resets while holding
 };
 
 // --- Init Three.js ---
@@ -44,6 +53,16 @@ function initRenderer() {
         1000
     );
     state.camera.position.set(0, 0, 0);
+
+    // Camera rig: parent of camera. In VR, we move the rig for locomotion
+    // while the headset controls camera's local transform (head tracking).
+    // On desktop the rig stays at origin and we move the camera directly.
+    state.cameraRig = new THREE.Group();
+    state.cameraRig.add(state.camera);
+    state.scene.add(state.cameraRig);
+
+    // Enable WebXR
+    state.renderer.xr.enabled = true;
 
     // Container for splat meshes — applies coordinate transform
     // SHARP uses OpenCV convention: x right, y down, z forward
@@ -89,6 +108,11 @@ function onSplatLoaded(mesh) {
     state.camera.quaternion.setFromEuler(state.euler);
     state.parallaxCurrent.set(0, 0, 0);
     state.parallaxTarget.set(0, 0, 0);
+    // Reset VR rig too
+    if (state.cameraRig) {
+        state.cameraRig.position.set(0, 0, 0);
+        state.cameraRig.quaternion.identity();
+    }
 }
 
 // --- Load splat from .ply URL ---
@@ -250,8 +274,19 @@ function initControls() {
     const canvas = state.renderer.domElement;
 
     // Keyboard
+    const movementKeys = new Set([
+        "KeyW", "KeyA", "KeyS", "KeyD", "KeyQ", "KeyE",
+        "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+        "Period", "Minus",
+    ]);
+
     document.addEventListener("keydown", (e) => {
         state.keys[e.code] = true;
+        state.keys[e.key] = true;
+
+        if (movementKeys.has(e.code) || e.key === "-") {
+            document.body.style.cursor = "none";
+        }
 
         // H to toggle HUD
         if (e.code === "KeyH" && !e.repeat) {
@@ -262,6 +297,7 @@ function initControls() {
 
     document.addEventListener("keyup", (e) => {
         state.keys[e.code] = false;
+        state.keys[e.key] = false;
     });
 
     // Mouse button state
@@ -278,15 +314,33 @@ function initControls() {
         }
     });
 
+    // Orbit distance slider
+    const orbitSlider = document.getElementById("orbit-distance");
+    orbitSlider.addEventListener("input", () => {
+        state.orbitDistance = parseFloat(orbitSlider.value);
+        console.log("Orbit distance:", state.orbitDistance.toFixed(1));
+    });
+
     // Mouse: button up = parallax strafe, button down = rotate camera
     document.addEventListener("mousemove", (e) => {
+        document.body.style.cursor = "";
         if (state.mouseDown) {
-            // Rotate camera
+            // Compute pivot point at orbitDistance ahead of camera
+            const oldForward = new THREE.Vector3(0, 0, -1).applyQuaternion(state.camera.quaternion);
+            const pivot = state.cameraHome.clone().add(oldForward.multiplyScalar(state.orbitDistance));
+
+            // Rotate camera orientation
             state.euler.setFromQuaternion(state.camera.quaternion);
             state.euler.y -= e.movementX * state.lookSpeed;
             state.euler.x -= e.movementY * state.lookSpeed;
             state.euler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, state.euler.x));
             state.camera.quaternion.setFromEuler(state.euler);
+
+            // Move camera to maintain orbit around pivot
+            if (state.orbitDistance > 0) {
+                const newForward = new THREE.Vector3(0, 0, -1).applyQuaternion(state.camera.quaternion);
+                state.cameraHome.copy(pivot).sub(newForward.multiplyScalar(state.orbitDistance));
+            }
         } else {
             // Parallax strafe
             state.mouseNDC.x = -((e.clientX / window.innerWidth) * 2 - 1);
@@ -295,19 +349,126 @@ function initControls() {
     });
 }
 
+// --- WebXR / VR ---
+function initXR() {
+    // FpsMovement from Spark — handles XR controller thumbsticks as split gamepad.
+    // Left stick = move, right stick = look. Disabled on desktop.
+    state.xrFpsMovement = new FpsMovement({
+        xr: state.renderer.xr,
+        moveSpeed: 0.5,
+        rotateSpeed: 1.5,
+    });
+    state.xrFpsMovement.enable = false;
+
+    // VR button — only show if WebXR is supported
+    if (navigator.xr) {
+        navigator.xr.isSessionSupported("immersive-vr").then((supported) => {
+            if (!supported) {
+                console.log("WebXR immersive-vr not supported on this device");
+                return;
+            }
+            const btn = document.getElementById("vr-button");
+            btn.classList.remove("hidden");
+            btn.addEventListener("click", toggleVR);
+        });
+    }
+
+    // Listen for session end (e.g. user takes off headset or presses home)
+    state.renderer.xr.addEventListener("sessionend", () => {
+        console.log("XR session ended");
+        state.xrSession = null;
+        state.xrFpsMovement.enable = false;
+        document.getElementById("vr-button").textContent = "Enter VR";
+        // Restore desktop camera position from rig
+        state.camera.position.copy(state.cameraHome);
+        state.cameraRig.position.set(0, 0, 0);
+        state.cameraRig.quaternion.identity();
+    });
+}
+
+async function toggleVR() {
+    if (state.xrSession) {
+        state.xrSession.end();
+        return;
+    }
+
+    try {
+        const session = await navigator.xr.requestSession("immersive-vr", {
+            optionalFeatures: ["local-floor", "bounded-floor"],
+        });
+        state.xrSession = session;
+        state.renderer.xr.setSession(session);
+
+        // Move rig to where the desktop camera was, reset camera local position
+        state.cameraRig.position.copy(state.cameraHome);
+        state.cameraRig.quaternion.setFromEuler(state.euler);
+        state.camera.position.set(0, 0, 0);
+        state.camera.quaternion.identity();
+
+        state.xrFpsMovement.enable = true;
+        document.getElementById("vr-button").textContent = "Exit VR";
+        console.log("XR session started");
+    } catch (err) {
+        console.error("Failed to start XR session:", err);
+    }
+}
+
+function updateXRInput(dt) {
+    if (!state.xrSession) return;
+
+    // FpsMovement handles thumbstick locomotion on the rig
+    state.xrFpsMovement.update(dt, state.cameraRig);
+
+    // Reset: long-press both squeeze/grip buttons to reset position
+    const session = state.renderer.xr.getSession();
+    if (!session) return;
+
+    const sources = Array.from(session.inputSources || []);
+    let bothSqueezed = sources.length >= 2;
+    for (const source of sources) {
+        const gp = source.gamepad;
+        // Squeeze is typically button index 1 on Quest controllers
+        if (!gp || !gp.buttons[1] || !gp.buttons[1].pressed) {
+            bothSqueezed = false;
+            break;
+        }
+    }
+
+    if (bothSqueezed) {
+        state.xrResetHeld += dt;
+        if (state.xrResetHeld >= state.xrResetThreshold && !state.xrResetDone) {
+            console.log("VR position reset");
+            state.cameraRig.position.set(0, 0, 0);
+            state.cameraRig.quaternion.identity();
+            state.xrResetDone = true;
+        }
+    } else {
+        state.xrResetHeld = 0;
+        state.xrResetDone = false;
+    }
+}
+
 function updateMovement(dt) {
     if (!state.splatMesh) return;
+
+    // In VR, locomotion is handled by FpsMovement + head tracking
+    if (state.xrSession) {
+        updateXRInput(dt);
+        return;
+    }
+
+    // --- Desktop controls ---
 
     // WASD + QE movement (always active)
     const speed = state.moveSpeed * (state.keys["ShiftLeft"] || state.keys["ShiftRight"] ? 3.0 : 1.0);
     const velocity = new THREE.Vector3();
 
-    if (state.keys["KeyW"]) velocity.z -= 1;
-    if (state.keys["KeyS"]) velocity.z += 1;
-    if (state.keys["KeyA"]) velocity.x -= 1;
-    if (state.keys["KeyD"]) velocity.x += 1;
-    if (state.keys["KeyE"]) velocity.y += 1;
-    if (state.keys["KeyQ"]) velocity.y -= 1;
+    if (state.keys["KeyW"] || state.keys["ArrowUp"])    velocity.z -= 1;
+    if (state.keys["KeyS"] || state.keys["ArrowDown"])  velocity.z += 1;
+    if (state.keys["KeyA"] || state.keys["ArrowLeft"])  velocity.x -= 1;
+    if (state.keys["KeyD"] || state.keys["ArrowRight"]) velocity.x += 1;
+    if (state.keys["KeyE"] || state.keys["-"])  velocity.y += 1;
+    if (state.keys["KeyQ"] || state.keys["Period"]) velocity.y -= 1;
 
     if (velocity.length() > 0) {
         velocity.normalize().multiplyScalar(speed * dt);
@@ -316,9 +477,12 @@ function updateMovement(dt) {
     }
 
     // Mouse parallax: smoothly strafe around current home position
+    // Disable parallax offset while orbiting (mouse button held)
+    const px = state.mouseDown ? 0 : state.mouseNDC.x * state.parallaxStrength;
+    const py = state.mouseDown ? 0 : state.mouseNDC.y * state.parallaxStrength;
     state.parallaxTarget.set(
-        state.cameraHome.x + state.mouseNDC.x * state.parallaxStrength,
-        state.cameraHome.y + state.mouseNDC.y * state.parallaxStrength,
+        state.cameraHome.x + px,
+        state.cameraHome.y + py,
         state.cameraHome.z
     );
     state.parallaxCurrent.lerp(state.parallaxTarget, state.parallaxLerp);
@@ -365,6 +529,7 @@ function init() {
     initRenderer();
     initDragDrop();
     initControls();
+    initXR();
     startRenderLoop();
     checkUrlParams();
 }
