@@ -134,6 +134,16 @@
             width: 120px;
             accent-color: #88f;
         }
+        #orbit-distance-num {
+            width: 50px;
+            background: #111;
+            color: #999;
+            border: 1px solid #444;
+            border-radius: 3px;
+            padding: 2px 4px;
+            font-size: 0.75rem;
+            font-family: inherit;
+        }
 
         /* VR button */
         #vr-button {
@@ -184,6 +194,7 @@
         <kbd>Q</kbd> down <kbd>E</kbd> up &nbsp;
         <kbd>Mouse</kbd> parallax &nbsp;
         <kbd>Click+drag</kbd> orbit &nbsp;
+        <kbd>Dbl-click</kbd> set orbit point &nbsp;
         <kbd>Shift</kbd> fast &nbsp;
         <kbd>H</kbd> hide UI
         <br>
@@ -193,7 +204,8 @@
 
     <div id="orbit-control">
         <label for="orbit-distance">Orbit</label>
-        <input type="range" id="orbit-distance" min="0" max="30" value="2" step="0.5">
+        <input type="range" id="orbit-distance" min="0" max="10" value="2" step="0.1">
+        <input type="number" id="orbit-distance-num" value="2" step="0.1" min="0">
     </div>
 
     <button id="vr-button" class="hidden">Enter VR</button>

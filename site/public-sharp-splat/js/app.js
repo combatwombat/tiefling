@@ -314,11 +314,47 @@ function initControls() {
         }
     });
 
-    // Orbit distance slider
+    // Orbit distance controls
     const orbitSlider = document.getElementById("orbit-distance");
+    const orbitNum = document.getElementById("orbit-distance-num");
+    function setOrbitDistance(val) {
+        state.orbitDistance = val;
+        orbitSlider.value = Math.min(val, parseFloat(orbitSlider.max));
+        orbitNum.value = parseFloat(val.toFixed(2));
+    }
     orbitSlider.addEventListener("input", () => {
-        state.orbitDistance = parseFloat(orbitSlider.value);
-        console.log("Orbit distance:", state.orbitDistance.toFixed(1));
+        setOrbitDistance(parseFloat(orbitSlider.value));
+    });
+    orbitNum.addEventListener("input", () => {
+        const v = parseFloat(orbitNum.value);
+        if (!isNaN(v) && v >= 0) setOrbitDistance(v);
+    });
+
+    // Double-click: raycast to set orbit distance from nearest splat
+    canvas.addEventListener("dblclick", (e) => {
+        if (!state.splatMesh) return;
+
+        const mouse = new THREE.Vector2(
+            (e.clientX / window.innerWidth) * 2 - 1,
+            -(e.clientY / window.innerHeight) * 2 + 1
+        );
+
+        const raycaster = new THREE.Raycaster();
+        raycaster.setup && raycaster.setup({ far: 1000 });
+        raycaster.setFromCamera(mouse, state.camera);
+
+        const intersects = [];
+        state.splatMesh.raycast(raycaster, intersects);
+
+        if (intersects.length > 0) {
+            // Use nearest hit distance
+            intersects.sort((a, b) => a.distance - b.distance);
+            const dist = intersects[0].distance;
+            setOrbitDistance(dist);
+            console.log("Orbit distance set to", dist.toFixed(2), "from raycast");
+        } else {
+            console.log("No splat hit under cursor");
+        }
     });
 
     // Mouse: button up = parallax strafe, button down = rotate camera
