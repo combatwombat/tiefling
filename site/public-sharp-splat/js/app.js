@@ -492,17 +492,75 @@ async function toggleVR() {
 function updateXRInput(dt) {
     if (!state.xrSession) return;
 
-    // FpsMovement handles thumbstick locomotion on the rig
-    state.xrFpsMovement.update(dt, state.cameraRig);
-
     const session = state.renderer.xr.getSession();
     if (!session) return;
 
     const sources = Array.from(session.inputSources || []);
 
+    // Debug: show controller info as text in VR
+    if (!state._xrDebugHud) {
+        const canvas = document.createElement("canvas");
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext("2d");
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.minFilter = THREE.LinearFilter;
+        const material = new THREE.SpriteMaterial({ map: texture, depthTest: false });
+        const sprite = new THREE.Sprite(material);
+        sprite.scale.set(0.4, 0.4, 1);
+        sprite.position.set(0, -0.15, -0.5); // below center of view, half meter away
+        sprite.renderOrder = 9999;
+        state.camera.add(sprite);
+        state._xrDebugHud = { canvas, ctx, texture, sprite };
+    }
+    {
+        const { canvas, ctx, texture } = state._xrDebugHud;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#0f0";
+        ctx.font = "18px monospace";
+        let y = 24;
+        const line = (text) => { ctx.fillText(text, 8, y); y += 22; };
+        line(`sources: ${sources.length}`);
+        for (const source of sources) {
+            const gp = source.gamepad;
+            if (!gp) { line(`[${source.handedness}] no gamepad`); continue; }
+            line(`[${source.handedness}] ${gp.buttons.length} btns, ${gp.axes.length} axes`);
+            for (let i = 0; i < gp.buttons.length; i++) {
+                const b = gp.buttons[i];
+                line(`  btn[${i}] val=${b.value.toFixed(2)} pressed=${b.pressed}`);
+            }
+            for (let i = 0; i < gp.axes.length; i++) {
+                line(`  axis[${i}] = ${gp.axes[i].toFixed(3)}`);
+            }
+        }
+        line(`rig pos: ${state.cameraRig.position.x.toFixed(2)}, ${state.cameraRig.position.y.toFixed(2)}, ${state.cameraRig.position.z.toFixed(2)}`);
+        texture.needsUpdate = true;
+    }
+
+    // Check if either grip is held for speed boost (like shift on keyboard)
+    // Grip is buttons[1] on Quest controllers
+    let speedMultiplier = 1.0;
+    let anyGripHeld = false;
+    for (const source of sources) {
+        const gp = source.gamepad;
+        if (gp && gp.buttons[1] && gp.buttons[1].pressed) {
+            anyGripHeld = true;
+            break;
+        }
+    }
+    if (anyGripHeld) speedMultiplier = 3.0;
+
+    // FpsMovement handles thumbstick locomotion on the rig
+    const savedSpeed = state.xrFpsMovement.moveSpeed;
+    state.xrFpsMovement.moveSpeed = savedSpeed * speedMultiplier;
+    state.xrFpsMovement.update(dt, state.cameraRig);
+    state.xrFpsMovement.moveSpeed = savedSpeed;
+
     // Vertical movement: left trigger = down, right trigger = up
     // Trigger is buttons[0] (analog 0-1) on Quest controllers
-    const verticalSpeed = 1.0;
+    const verticalSpeed = 1.0 * speedMultiplier;
     for (const source of sources) {
         const gp = source.gamepad;
         if (!gp || !gp.buttons[0]) continue;
@@ -520,7 +578,6 @@ function updateXRInput(dt) {
     let bothSqueezed = sources.length >= 2;
     for (const source of sources) {
         const gp = source.gamepad;
-        // Squeeze is typically button index 1 on Quest controllers
         if (!gp || !gp.buttons[1] || !gp.buttons[1].pressed) {
             bothSqueezed = false;
             break;
