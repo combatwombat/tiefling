@@ -495,11 +495,28 @@ function updateXRInput(dt) {
     // FpsMovement handles thumbstick locomotion on the rig
     state.xrFpsMovement.update(dt, state.cameraRig);
 
-    // Reset: long-press both squeeze/grip buttons to reset position
     const session = state.renderer.xr.getSession();
     if (!session) return;
 
     const sources = Array.from(session.inputSources || []);
+
+    // Vertical movement: left trigger = down, right trigger = up
+    // Trigger is buttons[0] (analog 0-1) on Quest controllers
+    const verticalSpeed = 1.0;
+    for (const source of sources) {
+        const gp = source.gamepad;
+        if (!gp || !gp.buttons[0]) continue;
+        const triggerValue = gp.buttons[0].value;
+        if (triggerValue > 0.05) {
+            if (source.handedness === "left") {
+                state.cameraRig.position.y -= triggerValue * verticalSpeed * dt;
+            } else if (source.handedness === "right") {
+                state.cameraRig.position.y += triggerValue * verticalSpeed * dt;
+            }
+        }
+    }
+
+    // Reset: long-press both squeeze/grip buttons to reset position
     let bothSqueezed = sources.length >= 2;
     for (const source of sources) {
         const gp = source.gamepad;
