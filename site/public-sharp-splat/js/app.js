@@ -497,31 +497,6 @@ function updateXRInput(dt) {
 
     const sources = Array.from(session.inputSources || []);
 
-    // Debug: log controller info to DOM (readable after exiting VR)
-    // Also flash background color as visual proof triggers are detected
-    const dbg = document.getElementById("debug-label");
-    let debugLines = [`sources: ${sources.length}`];
-    let anyTrigger = 0;
-    for (const source of sources) {
-        const gp = source.gamepad;
-        if (!gp) { debugLines.push(`[${source.handedness}] no gamepad`); continue; }
-        debugLines.push(`[${source.handedness}] ${gp.buttons.length} btns`);
-        for (let i = 0; i < gp.buttons.length; i++) {
-            const b = gp.buttons[i];
-            debugLines.push(`  btn[${i}] val=${b.value.toFixed(2)} pr=${b.pressed}`);
-            if (i === 0) anyTrigger = Math.max(anyTrigger, b.value);
-        }
-    }
-    debugLines.push(`rig Y: ${state.cameraRig.position.y.toFixed(3)}`);
-    if (dbg) dbg.textContent = debugLines.join("\n");
-
-    // Visual debug: tint scene background based on any trigger press
-    if (anyTrigger > 0.05) {
-        state.scene.background = new THREE.Color(anyTrigger * 0.3, 0, 0);
-    } else {
-        state.scene.background = null;
-    }
-
     // Check if either grip is held for speed boost (like shift on keyboard)
     // Grip is buttons[1] on Quest controllers
     let speedMultiplier = 1.0;
