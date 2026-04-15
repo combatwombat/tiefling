@@ -497,50 +497,21 @@ function updateXRInput(dt) {
 
     const sources = Array.from(session.inputSources || []);
 
-    // Debug: show controller info as text in VR
-    // Attach to the XR camera (not state.camera) so it's visible in headset
-    const xrCamera = state.renderer.xr.getCamera();
-    if (!state._xrDebugHud && xrCamera) {
-        const canvas = document.createElement("canvas");
-        canvas.width = 512;
-        canvas.height = 512;
-        const ctx = canvas.getContext("2d");
-        const texture = new THREE.CanvasTexture(canvas);
-        texture.minFilter = THREE.LinearFilter;
-        const geo = new THREE.PlaneGeometry(0.4, 0.4);
-        const material = new THREE.MeshBasicMaterial({
-            map: texture, transparent: true, depthTest: false
-        });
-        const mesh = new THREE.Mesh(geo, material);
-        mesh.position.set(0, -0.2, -0.6);
-        mesh.renderOrder = 9999;
-        xrCamera.add(mesh);
-        state._xrDebugHud = { canvas, ctx, texture, mesh };
-    }
-    if (state._xrDebugHud) {
-        const { canvas, ctx, texture } = state._xrDebugHud;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "rgba(0,0,0,0.7)";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "#0f0";
-        ctx.font = "20px monospace";
-        let y = 28;
-        const line = (text) => { ctx.fillText(text, 8, y); y += 24; };
-        line(`sources: ${sources.length}`);
+    // Debug: write controller info to the HTML overlay
+    const dbg = document.getElementById("debug-label");
+    if (dbg) {
+        let lines = [`sources: ${sources.length}`];
         for (const source of sources) {
             const gp = source.gamepad;
-            if (!gp) { line(`[${source.handedness}] no gamepad`); continue; }
-            line(`[${source.handedness}] ${gp.buttons.length} btns, ${gp.axes.length} axes`);
+            if (!gp) { lines.push(`[${source.handedness}] no gamepad`); continue; }
+            lines.push(`[${source.handedness}] ${gp.buttons.length} btns, ${gp.axes.length} axes`);
             for (let i = 0; i < gp.buttons.length; i++) {
                 const b = gp.buttons[i];
-                line(`  btn[${i}] val=${b.value.toFixed(2)} pr=${b.pressed}`);
-            }
-            for (let i = 0; i < gp.axes.length; i++) {
-                line(`  axis[${i}] = ${gp.axes[i].toFixed(3)}`);
+                lines.push(`  btn[${i}] val=${b.value.toFixed(2)} pr=${b.pressed}`);
             }
         }
-        line(`rig Y: ${state.cameraRig.position.y.toFixed(3)}`);
-        texture.needsUpdate = true;
+        lines.push(`rig Y: ${state.cameraRig.position.y.toFixed(3)}`);
+        dbg.textContent = lines.join("\n");
     }
 
     // Check if either grip is held for speed boost (like shift on keyboard)
