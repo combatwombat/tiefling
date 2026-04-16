@@ -156,7 +156,9 @@ async function processImage(file, force = false) {
     if (force) formData.append("force", "1");
 
     try {
-        showLoading("Generating 3D gaussian splat… (this takes ~20s)");
+        const est = Math.round(getEstimatedSeconds());
+        showLoading(`Generating 3D gaussian splat… (~${est}s)`);
+        startProgress();
         const resp = await fetch("api.php", {
             method: "POST",
             body: formData,
@@ -192,7 +194,9 @@ async function processImageFromUrl(imageUrl, force = false) {
         formData.append("imageUrl", imageUrl);
         if (force) formData.append("force", "1");
 
-        showLoading("Generating 3D gaussian splat… (this takes ~20s)");
+        const est = Math.round(getEstimatedSeconds());
+        showLoading(`Generating 3D gaussian splat… (~${est}s)`);
+        startProgress();
         const resp = await fetch("api.php", {
             method: "POST",
             body: formData,
@@ -222,6 +226,13 @@ async function processImageFromUrl(imageUrl, force = false) {
 
 // --- UI helpers ---
 const defaultTitle = document.title;
+let progressInterval = null;
+let progressStartTime = 0;
+
+function getEstimatedSeconds() {
+    const stored = localStorage.getItem("splat-generation-seconds");
+    return stored ? parseFloat(stored) : 30;
+}
 
 function showLoading(msg) {
     const el = document.getElementById("loading");
@@ -230,7 +241,53 @@ function showLoading(msg) {
     document.title = "🔴 " + (msg || "Processing…");
 }
 
+function startProgress() {
+    const wrap = document.querySelector("#loading .progress-wrap");
+    const fill = document.querySelector("#loading .progress-bar-fill");
+    const timeEl = document.querySelector("#loading .progress-time");
+    const estimate = getEstimatedSeconds();
+
+    fill.style.transition = "none";
+    fill.style.width = "0%";
+    // force reflow so the reset takes effect before we animate
+    fill.offsetWidth;
+    fill.style.transition = "width 0.5s linear";
+
+    wrap.classList.add("visible");
+    progressStartTime = performance.now();
+
+    function tick() {
+        const elapsed = (performance.now() - progressStartTime) / 1000;
+        const remaining = Math.max(0, estimate - elapsed);
+        const pct = Math.min((elapsed / estimate) * 100, 100);
+        fill.style.width = pct + "%";
+        timeEl.textContent = remaining > 0
+            ? `~${Math.ceil(remaining)}s remaining`
+            : "almost done…";
+    }
+
+    tick();
+    progressInterval = setInterval(tick, 500);
+}
+
+function stopProgress() {
+    if (progressInterval) {
+        clearInterval(progressInterval);
+        progressInterval = null;
+    }
+    document.querySelector("#loading .progress-wrap").classList.remove("visible");
+
+    // Save actual elapsed time for next estimate
+    if (progressStartTime > 0) {
+        const elapsed = (performance.now() - progressStartTime) / 1000;
+        localStorage.setItem("splat-generation-seconds", elapsed.toFixed(1));
+        console.log(`Splat generation took ${elapsed.toFixed(1)}s (saved for next estimate)`);
+        progressStartTime = 0;
+    }
+}
+
 function hideLoading() {
+    stopProgress();
     document.getElementById("loading").classList.remove("visible");
     document.title = defaultTitle;
 }
