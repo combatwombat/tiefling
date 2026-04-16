@@ -64,18 +64,24 @@ h1 {
 </style>
 </head>
 <body>
-<h1>Output .ply files (<?= count($dirs) ?>)</h1>
+<h1>Output splat files (<?= count($dirs) ?>)</h1>
 <div class="list">
 <?php foreach ($dirs as $dir):
-    $plys = glob($dir . '/*.ply');
-    if (empty($plys)) continue;
-    $ply = $plys[0];
-    $relPath = 'output/' . basename($dir) . '/' . basename($ply);
-    $mtime = filemtime($ply);
-    $size = filesize($ply);
+    // Prefer the migrated .sog; fall back to legacy .ply
+    $sog = $dir . '/splat.sog';
+    if (file_exists($sog)) {
+        $file = $sog;
+    } else {
+        $plys = glob($dir . '/*.ply');
+        if (empty($plys)) continue;
+        $file = $plys[0];
+    }
+    $relPath = 'output/' . basename($dir) . '/' . basename($file);
+    $mtime = filemtime($file);
+    $size = filesize($file);
 ?>
-<a href="<?= $baseUrl ?>?ply=<?= urlencode($relPath) ?>" target="_blank">
-    <?= basename($dir) ?>/<?= basename($ply) ?>
+<a href="<?= $baseUrl ?>?input=<?= urlencode($relPath) ?>" target="_blank">
+    <?= basename($dir) ?>/<?= basename($file) ?>
     <div class="meta"><?= date('Y-m-d H:i', $mtime) ?> · <?= round($size / 1024) ?> KB</div>
 </a>
 <?php endforeach; ?>

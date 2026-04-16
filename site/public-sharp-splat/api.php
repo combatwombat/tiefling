@@ -140,7 +140,8 @@ if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
 // Hash the image for caching
 $hash = md5_file($imagePath);
 $outputDir = "$outputBase/$hash";
-$basename = pathinfo($imagePath, PATHINFO_FILENAME);
+$sogPath = "$outputDir/splat.sog";
+$metaPath = "$outputDir/meta.json";
 
 // Force regeneration — delete cached output if requested
 $force = isset($_POST['force']) && $_POST['force'];
@@ -148,22 +149,22 @@ if ($force && is_dir($outputDir)) {
     array_map('unlink', glob("$outputDir/*"));
 }
 
-// Check cache — if .ply already exists for this hash, return it
-$cachedPly = glob("$outputDir/*.ply");
-if (!empty($cachedPly)) {
+// Check cache — if .sog already exists for this hash, return it
+if (file_exists($sogPath)) {
     if ($cleanup) @unlink($imagePath);
-    $plyFile = basename($cachedPly[0]);
-    $meta = extractPlyMeta($cachedPly[0]);
-    echo json_encode(['state' => 'success', 'ply' => "output/$hash/$plyFile", 'hash' => $hash] + $meta);
+    $meta = file_exists($metaPath) ? (json_decode(file_get_contents($metaPath), true) ?: []) : [];
+    echo json_encode(['state' => 'success', 'input' => "output/$hash/splat.sog", 'hash' => $hash, 'cached' => true] + $meta);
     exit;
 }
 
-@mkdir($outputDir, 0755, true);
+// Stage SHARP output in tmp — we only keep the final .sog in the output dir
+$stagingDir = "$tmpBase/sharp_$hash";
+@mkdir($stagingDir, 0755, true);
 
 // Run SHARP
 $escapedInput = escapeshellarg($imagePath);
-$escapedOutput = escapeshellarg($outputDir);
-$cmd = "$condaRun sharp predict -i $escapedInput -o $escapedOutput --no-render 2>&1";
+$escapedStaging = escapeshellarg($stagingDir);
+$cmd = "$condaRun sharp predict -i $escapedInput -o $escapedStaging --no-render 2>&1";
 
 $output = [];
 $returnCode = 0;
@@ -173,17 +174,41 @@ $outputStr = implode("\n", $output);
 if ($cleanup) @unlink($imagePath);
 
 if ($returnCode !== 0) {
+    array_map('unlink', glob("$stagingDir/*"));
+    @rmdir($stagingDir);
     echo json_encode(['state' => 'error', 'data' => "SHARP failed (code $returnCode): $outputStr"]);
     exit;
 }
 
 // Find the generated .ply
-$plyFiles = glob("$outputDir/*.ply");
+$plyFiles = glob("$stagingDir/*.ply");
 if (empty($plyFiles)) {
+    array_map('unlink', glob("$stagingDir/*"));
+    @rmdir($stagingDir);
     echo json_encode(['state' => 'error', 'data' => "SHARP produced no .ply file. Output: $outputStr"]);
     exit;
 }
 
-$plyFile = basename($plyFiles[0]);
-$meta = extractPlyMeta($plyFiles[0]);
-echo json_encode(['state' => 'success', 'ply' => "output/$hash/$plyFile", 'hash' => $hash] + $meta);
+$plyPath = $plyFiles[0];
+$meta = extractPlyMeta($plyPath);
+
+// Convert .ply → .sog
+@mkdir($outputDir, 0755, true);
+$splatTransform = __DIR__ . '/node_modules/.bin/splat-transform';
+$convertCmd = escapeshellarg($splatTransform) . ' -w -q ' . escapeshellarg($plyPath) . ' ' . escapeshellarg($sogPath) . ' 2>&1';
+$convertOutput = [];
+$convertRc = 0;
+exec($convertCmd, $convertOutput, $convertRc);
+
+// Cleanup staging regardless of outcome
+array_map('unlink', glob("$stagingDir/*"));
+@rmdir($stagingDir);
+
+if ($convertRc !== 0 || !file_exists($sogPath)) {
+    echo json_encode(['state' => 'error', 'data' => "SOG conversion failed (code $convertRc): " . implode("\n", $convertOutput)]);
+    exit;
+}
+
+file_put_contents($metaPath, json_encode($meta));
+
+echo json_encode(['state' => 'success', 'input' => "output/$hash/splat.sog", 'hash' => $hash] + $meta);

@@ -169,6 +169,7 @@ async function processImage(file, force = false) {
         const data = await resp.json();
         if (data.state === "error") throw new Error(data.data);
 
+        progressWasGenerated = !data.cached;
         hideLoading();
         hideDropzone();
 
@@ -176,7 +177,7 @@ async function processImage(file, force = false) {
         state.currentUrl = null;
         state.currentHash = data.hash || null;
         setCameraFromMeta(data);
-        loadSplat(data.ply);
+        loadSplat(data.input);
         showRegenButton();
     } catch (err) {
         console.error("Processing failed:", err);
@@ -207,6 +208,7 @@ async function processImageFromUrl(imageUrl, force = false) {
         const data = await resp.json();
         if (data.state === "error") throw new Error(data.data);
 
+        progressWasGenerated = !data.cached;
         hideLoading();
         hideDropzone();
 
@@ -214,7 +216,7 @@ async function processImageFromUrl(imageUrl, force = false) {
         state.currentUrl = imageUrl;
         state.currentHash = data.hash || null;
         setCameraFromMeta(data);
-        loadSplat(data.ply);
+        loadSplat(data.input);
         showRegenButton();
     } catch (err) {
         console.error("Processing failed:", err);
@@ -228,6 +230,7 @@ async function processImageFromUrl(imageUrl, force = false) {
 const defaultTitle = document.title;
 let progressInterval = null;
 let progressStartTime = 0;
+let progressWasGenerated = false;
 
 function getEstimatedSeconds() {
     const stored = localStorage.getItem("splat-generation-seconds");
@@ -262,7 +265,7 @@ function startProgress() {
         const pct = Math.min((elapsed / estimate) * 100, 100);
         fill.style.width = pct + "%";
         timeEl.textContent = remaining > 0
-            ? `~${Math.ceil(remaining)}s remaining`
+            ? `${Math.ceil(remaining)}s remaining`
             : "almost done…";
     }
 
@@ -277,12 +280,17 @@ function stopProgress() {
     }
     document.querySelector("#loading .progress-wrap").classList.remove("visible");
 
-    // Save actual elapsed time for next estimate
+    // Save actual elapsed time for next estimate (only for non-cached results)
     if (progressStartTime > 0) {
         const elapsed = (performance.now() - progressStartTime) / 1000;
-        localStorage.setItem("splat-generation-seconds", elapsed.toFixed(1));
-        console.log(`Splat generation took ${elapsed.toFixed(1)}s (saved for next estimate)`);
+        if (progressWasGenerated) {
+            localStorage.setItem("splat-generation-seconds", elapsed.toFixed(1));
+            console.log(`Splat generation took ${elapsed.toFixed(1)}s (saved for next estimate)`);
+        } else {
+            console.log(`Splat loaded from cache in ${elapsed.toFixed(1)}s (not saving)`);
+        }
         progressStartTime = 0;
+        progressWasGenerated = false;
     }
 }
 
@@ -671,20 +679,31 @@ function startRenderLoop() {
 }
 
 // --- URL params ---
+const splatExtensions = /\.(ply|sog|spz|splat|ksplat)$/i;
+
+// Load a splat URL and, if a sibling meta.json exists, apply its camera FOV first.
+// SHARP embeds focal length in the .ply's `intrinsic` element but Spark ignores it,
+// and .sog has no place for it — so we write a sidecar meta.json next to the splat.
+async function loadSplatWithMeta(splatUrl) {
+    const metaUrl = splatUrl.replace(/[?#].*$/, '').replace(/\/[^\/]+$/, '/meta.json');
+    try {
+        const resp = await fetch(metaUrl);
+        if (resp.ok) setCameraFromMeta(await resp.json());
+    } catch (_) { /* no sidecar — default FOV */ }
+    loadSplat(splatUrl);
+}
+
 function checkUrlParams() {
     const params = new URLSearchParams(window.location.search);
-
-    // Direct .ply loading for development/testing
-    const plyParam = params.get("ply");
-    if (plyParam) {
-        hideDropzone();
-        loadSplat(plyParam);
-        return;
-    }
-
-    // Image input → process via API
     const inputParam = params.get("input");
-    if (inputParam) {
+    if (!inputParam) return;
+
+    // Splat file → load directly; anything else → treat as image URL → API
+    const clean = inputParam.split(/[?#]/, 1)[0];
+    if (splatExtensions.test(clean)) {
+        hideDropzone();
+        loadSplatWithMeta(inputParam);
+    } else {
         processImageFromUrl(inputParam);
     }
 }
