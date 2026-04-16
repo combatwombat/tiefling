@@ -245,7 +245,7 @@ function startProgress() {
     const wrap = document.querySelector("#loading .progress-wrap");
     const fill = document.querySelector("#loading .progress-bar-fill");
     const timeEl = document.querySelector("#loading .progress-time");
-    const estimate = getEstimatedSeconds();
+    const estimate = getEstimatedSeconds() + 1;
 
     fill.style.transition = "none";
     fill.style.width = "0%";
