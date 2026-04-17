@@ -562,50 +562,73 @@ function updateXRInput(dt) {
 
     const sources = Array.from(session.inputSources || []);
 
-    // Check if either grip is held for speed boost (like shift on keyboard)
-    // Grip is buttons[1] on Quest controllers
-    let speedMultiplier = 1.0;
-    let anyGripHeld = false;
+    // Quest button map: [0]=trigger, [1]=grip, [4]=A/X (lower), [5]=B/Y (upper)
+    let leftGamepad = null;
+    let rightGamepad = null;
     for (const source of sources) {
-        const gp = source.gamepad;
-        if (gp && gp.buttons[1] && gp.buttons[1].pressed) {
-            anyGripHeld = true;
-            break;
+        if (!source.gamepad) continue;
+        if (source.handedness === "left") leftGamepad = source.gamepad;
+        else if (source.handedness === "right") rightGamepad = source.gamepad;
+    }
+
+    const leftGripHeld  = !!(leftGamepad  && leftGamepad.buttons[1]  && leftGamepad.buttons[1].pressed);
+    const rightGripHeld = !!(rightGamepad && rightGamepad.buttons[1] && rightGamepad.buttons[1].pressed);
+    const anyGripHeld = leftGripHeld || rightGripHeld;
+    const speedMultiplier = anyGripHeld ? 3.0 : 1.0;
+
+    // FpsMovement: left stick = move, right stick = look.
+    // When right grip is held, we repurpose the right stick as a second move stick,
+    // so suppress FpsMovement's rotation for that frame.
+    const savedMove = state.xrFpsMovement.moveSpeed;
+    const savedRotate = state.xrFpsMovement.rotateSpeed;
+    state.xrFpsMovement.moveSpeed = savedMove * speedMultiplier;
+    if (rightGripHeld) state.xrFpsMovement.rotateSpeed = 0;
+    state.xrFpsMovement.update(dt, state.cameraRig);
+    state.xrFpsMovement.moveSpeed = savedMove;
+    state.xrFpsMovement.rotateSpeed = savedRotate;
+
+    // Right stick → horizontal translation (forward/back/strafe) while right grip is held
+    if (rightGripHeld && rightGamepad) {
+        const ax = rightGamepad.axes[2] || 0;
+        const ay = rightGamepad.axes[3] || 0;
+        const dead = 0.1;
+        if (Math.abs(ax) > dead || Math.abs(ay) > dead) {
+            const camQ = state.camera.getWorldQuaternion(new THREE.Quaternion());
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camQ);
+            forward.y = 0; forward.normalize();
+            const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camQ);
+            right.y = 0; right.normalize();
+            const v = new THREE.Vector3()
+                .addScaledVector(right, ax)
+                .addScaledVector(forward, -ay);
+            v.multiplyScalar(savedMove * speedMultiplier * dt);
+            state.cameraRig.position.add(v);
         }
     }
-    if (anyGripHeld) speedMultiplier = 3.0;
 
-    // FpsMovement handles thumbstick locomotion on the rig
-    const savedSpeed = state.xrFpsMovement.moveSpeed;
-    state.xrFpsMovement.moveSpeed = savedSpeed * speedMultiplier;
-    state.xrFpsMovement.update(dt, state.cameraRig);
-    state.xrFpsMovement.moveSpeed = savedSpeed;
-
-    // Vertical movement: left trigger = down, right trigger = up
-    // Trigger is buttons[0] (analog 0-1) on Quest controllers
+    // Vertical movement:
+    //   left trigger = down, right trigger = up (analog)
+    //   right B (upper, [5]) = up, right A (lower, [4]) = down (digital)
     const verticalSpeed = 1.0 * speedMultiplier;
-    for (const source of sources) {
-        const gp = source.gamepad;
-        if (!gp || !gp.buttons[0]) continue;
-        const triggerValue = gp.buttons[0].value;
-        if (triggerValue > 0.05) {
-            if (source.handedness === "left") {
-                state.cameraRig.position.y -= triggerValue * verticalSpeed * dt;
-            } else if (source.handedness === "right") {
-                state.cameraRig.position.y += triggerValue * verticalSpeed * dt;
-            }
+    if (leftGamepad && leftGamepad.buttons[0]) {
+        const v = leftGamepad.buttons[0].value;
+        if (v > 0.05) state.cameraRig.position.y -= v * verticalSpeed * dt;
+    }
+    if (rightGamepad && rightGamepad.buttons[0]) {
+        const v = rightGamepad.buttons[0].value;
+        if (v > 0.05) state.cameraRig.position.y += v * verticalSpeed * dt;
+    }
+    if (rightGamepad) {
+        if (rightGamepad.buttons[5] && rightGamepad.buttons[5].pressed) {
+            state.cameraRig.position.y += verticalSpeed * dt;
+        }
+        if (rightGamepad.buttons[4] && rightGamepad.buttons[4].pressed) {
+            state.cameraRig.position.y -= verticalSpeed * dt;
         }
     }
 
     // Reset: long-press both squeeze/grip buttons to reset position
-    let bothSqueezed = sources.length >= 2;
-    for (const source of sources) {
-        const gp = source.gamepad;
-        if (!gp || !gp.buttons[1] || !gp.buttons[1].pressed) {
-            bothSqueezed = false;
-            break;
-        }
-    }
+    const bothSqueezed = leftGripHeld && rightGripHeld;
 
     if (bothSqueezed) {
         state.xrResetHeld += dt;
