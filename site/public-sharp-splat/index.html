@@ -176,6 +176,20 @@
         #regen-button:hover { background: #443; border-color: #88f; }
         #regen-button.hidden { display: none; }
 
+        /* Shuffle button — picks a random splat from images.php */
+        #shuffle-button {
+            padding: 4px 8px;
+            background: #222;
+            color: #ccc;
+            border: 1px solid #444;
+            border-radius: 5px;
+            font-size: 0.9rem;
+            line-height: 1;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s;
+        }
+        #shuffle-button:hover { background: #333; border-color: #88f; }
+
         /* VR button */
         #vr-button {
             position: fixed;
@@ -237,10 +251,12 @@
         <kbd>B</kbd> up <kbd>A</kbd> down &nbsp;
         <kbd>R-grip</kbd>+<kbd>R-stick</kbd> move &nbsp;
         <kbd>Grip</kbd> fast &nbsp;
-        <kbd>Squeeze both</kbd> hold to reset
+        <kbd>Squeeze both</kbd> hold to reset &nbsp;
+        <kbd>A</kbd>+<kbd>B</kbd> hold to shuffle
     </div>
 
     <div id="orbit-control">
+        <button id="shuffle-button" title="Load a random splat">&#x1F500;</button>
         <label for="orbit-distance">Orbit</label>
         <input type="range" id="orbit-distance" min="0" max="10" value="2" step="0.1">
         <input type="number" id="orbit-distance-num" value="2" step="0.1" min="0">
@@ -249,6 +265,6 @@
 
     <button id="vr-button" class="hidden">Enter VR</button>
 
-    <script type="module" src="js/app.js?v=2026-04-17-1"></script>
+    <script type="module" src="js/app.js?v=2026-04-17-2"></script>
 </body>
 </html>

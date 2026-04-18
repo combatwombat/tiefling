@@ -37,6 +37,8 @@ const state = {
     xrResetHeld: 0,             // seconds the reset button has been held
     xrResetThreshold: 1.0,      // seconds to hold before reset triggers
     xrResetDone: false,         // prevent repeated resets while holding
+    xrShuffleHeld: 0,           // seconds right A+B have been held together
+    xrShuffleDone: false,       // prevent repeated shuffles while holding
 };
 
 // --- Init Three.js ---
@@ -320,6 +322,24 @@ async function regenerateCache() {
     }
 }
 
+async function shuffleSplat() {
+    try {
+        const resp = await fetch("images.php?get_random_path");
+        if (!resp.ok) throw new Error(`Server error: ${resp.status}`);
+        const data = await resp.json();
+        if (!data.path) throw new Error(data.error || "No splat returned");
+
+        const url = new URL(window.location);
+        url.searchParams.set("input", data.path);
+        history.replaceState(null, "", url);
+
+        hideDropzone();
+        loadSplatWithMeta(data.path);
+    } catch (err) {
+        console.error("Shuffle failed:", err);
+    }
+}
+
 // --- Drag & drop ---
 function initDragDrop() {
     const dropzone = document.getElementById("dropzone");
@@ -434,6 +454,9 @@ function initControls() {
 
     // Regenerate cache button
     document.getElementById("regen-button").addEventListener("click", regenerateCache);
+
+    // Shuffle button — load a random splat from images.php
+    document.getElementById("shuffle-button").addEventListener("click", shuffleSplat);
 
     // Double-click: raycast to set orbit distance from nearest splat
     canvas.addEventListener("dblclick", (e) => {
@@ -641,6 +664,24 @@ function updateXRInput(dt) {
     } else {
         state.xrResetHeld = 0;
         state.xrResetDone = false;
+    }
+
+    // Shuffle: hold right A + B together for 1s to load a random splat.
+    // A and B are also vertical controls, but held together their Y deltas cancel.
+    const rightABHeld = !!(rightGamepad
+        && rightGamepad.buttons[4] && rightGamepad.buttons[4].pressed
+        && rightGamepad.buttons[5] && rightGamepad.buttons[5].pressed);
+
+    if (rightABHeld) {
+        state.xrShuffleHeld += dt;
+        if (state.xrShuffleHeld >= 1.0 && !state.xrShuffleDone) {
+            console.log("VR shuffle → random splat");
+            shuffleSplat();
+            state.xrShuffleDone = true;
+        }
+    } else {
+        state.xrShuffleHeld = 0;
+        state.xrShuffleDone = false;
     }
 }
 

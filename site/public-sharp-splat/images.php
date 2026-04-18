@@ -3,6 +3,28 @@
 $outputDir = __DIR__ . '/output';
 $dirs = array_filter(glob($outputDir . '/*'), 'is_dir');
 
+// Resolve a splat file inside a directory: prefer .sog, fall back to first .ply
+function resolveSplatPath($dir) {
+    $sog = $dir . '/splat.sog';
+    if (file_exists($sog)) return 'output/' . basename($dir) . '/' . basename($sog);
+    $plys = glob($dir . '/*.ply');
+    if (!empty($plys)) return 'output/' . basename($dir) . '/' . basename($plys[0]);
+    return null;
+}
+
+// JSON endpoint: return a random splat relative path
+if (isset($_GET['get_random_path'])) {
+    header('Content-Type: application/json');
+    $paths = array_filter(array_map('resolveSplatPath', $dirs));
+    if (empty($paths)) {
+        echo json_encode(['error' => 'No splats found']);
+        exit;
+    }
+    $paths = array_values($paths);
+    echo json_encode(['path' => $paths[array_rand($paths)]]);
+    exit;
+}
+
 // Sort by modification time, newest first
 usort($dirs, function($a, $b) {
     return filemtime($b) - filemtime($a);
@@ -67,16 +89,9 @@ h1 {
 <h1>Output splat files (<?= count($dirs) ?>)</h1>
 <div class="list">
 <?php foreach ($dirs as $dir):
-    // Prefer the migrated .sog; fall back to legacy .ply
-    $sog = $dir . '/splat.sog';
-    if (file_exists($sog)) {
-        $file = $sog;
-    } else {
-        $plys = glob($dir . '/*.ply');
-        if (empty($plys)) continue;
-        $file = $plys[0];
-    }
-    $relPath = 'output/' . basename($dir) . '/' . basename($file);
+    $relPath = resolveSplatPath($dir);
+    if (!$relPath) continue;
+    $file = __DIR__ . '/' . $relPath;
     $mtime = filemtime($file);
     $size = filesize($file);
 ?>
