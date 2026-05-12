@@ -519,8 +519,8 @@ function initXR() {
     // Left stick = move, right stick = look. Disabled on desktop.
     state.xrFpsMovement = new FpsMovement({
         xr: state.renderer.xr,
-        moveSpeed: 0.2,
-        rotateSpeed: 0.6,
+        moveSpeed: 0.1,
+        rotateSpeed: 0.3,
     });
     state.xrFpsMovement.enable = false;
 
@@ -632,7 +632,7 @@ function updateXRInput(dt) {
     // Vertical movement:
     //   left trigger = down, right trigger = up (analog)
     //   right B (upper, [5]) = up, right A (lower, [4]) = down (digital)
-    const verticalSpeed = 0.4 * speedMultiplier;
+    const verticalSpeed = 0.2 * speedMultiplier;
     if (leftGamepad && leftGamepad.buttons[0]) {
         const v = leftGamepad.buttons[0].value;
         if (v > 0.05) state.cameraRig.position.y -= v * verticalSpeed * dt;
