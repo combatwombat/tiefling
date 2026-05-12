@@ -414,6 +414,7 @@ function initControls() {
         if (e.code === "KeyH" && !e.repeat) {
             state.hudVisible = !state.hudVisible;
             document.getElementById("hud").classList.toggle("hidden", !state.hudVisible);
+            document.getElementById("version").classList.toggle("hidden", !state.hudVisible);
         }
     });
 

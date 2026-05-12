@@ -207,6 +207,19 @@
         }
         #vr-button:hover { background: #444; border-color: #88f; }
         #vr-button.hidden { display: none; }
+
+        /* Version indicator — top-left, helps confirm cache busted */
+        #version {
+            position: fixed;
+            top: 8px;
+            left: 12px;
+            z-index: 50;
+            font-size: 0.7rem;
+            color: #555;
+            pointer-events: none;
+            font-family: monospace;
+        }
+        #version.hidden { display: none; }
     </style>
     <script type="importmap">
     {
@@ -265,6 +278,8 @@
 
     <button id="vr-button" class="hidden">Enter VR</button>
 
-    <script type="module" src="js/app.js?v=2026-05-12-2"></script>
+    <div id="version">v2026-05-12-3</div>
+
+    <script type="module" src="js/app.js?v=2026-05-12-3"></script>
 </body>
 </html>
