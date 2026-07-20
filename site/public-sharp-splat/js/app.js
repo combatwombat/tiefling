@@ -69,6 +69,10 @@ function initRenderer() {
 
     // Enable WebXR
     state.renderer.xr.enabled = true;
+    // Use "local" reference space: origin = headset pose at session start.
+    // The default "local-floor" puts the origin on the room floor, which starts
+    // the view ~1.7m above the splat's photo viewpoint at (0,0,0).
+    state.renderer.xr.setReferenceSpaceType("local");
 
     // Container for splat meshes — applies coordinate transform
     // SHARP uses OpenCV convention: x right, y down, z forward
@@ -558,9 +562,7 @@ async function toggleVR() {
     }
 
     try {
-        const session = await navigator.xr.requestSession("immersive-vr", {
-            optionalFeatures: ["local-floor", "bounded-floor"],
-        });
+        const session = await navigator.xr.requestSession("immersive-vr");
         state.xrSession = session;
         state.renderer.xr.setSession(session);
 
