@@ -18,7 +18,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-$condaRun = '/opt/homebrew/Caskroom/miniconda/base/bin/conda run --no-capture-output -n sharp';
+// SHARP CLI. Note: the `sharp` binary uses Homebrew's Python 3.11, not the conda env —
+// `conda run -n sharp` only set PATH and fell through to this same binary, so we call it directly.
+$sharpBin = '/opt/homebrew/bin/sharp';
 
 // Extract focal length and image size from a SHARP PLY file by parsing the binary format
 function extractPlyMeta(string $plyPath): array {
@@ -164,7 +166,7 @@ $stagingDir = "$tmpBase/sharp_$hash";
 // Run SHARP
 $escapedInput = escapeshellarg($imagePath);
 $escapedStaging = escapeshellarg($stagingDir);
-$cmd = "$condaRun sharp predict -i $escapedInput -o $escapedStaging --no-render 2>&1";
+$cmd = escapeshellarg($sharpBin) . " predict -i $escapedInput -o $escapedStaging --no-render 2>&1";
 
 $output = [];
 $returnCode = 0;
